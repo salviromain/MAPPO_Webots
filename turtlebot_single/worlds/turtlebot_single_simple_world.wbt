@@ -1,0 +1,116 @@
+#VRML_SIM R2025a utf8
+
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/backgrounds/protos/TexturedBackground.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/backgrounds/protos/TexturedBackgroundLight.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/floors/protos/CircleArena.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/factory/containers/protos/WoodenBox.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/robots/robotis/turtlebot/protos/TurtleBot3Burger.proto"
+
+WorldInfo {
+  basicTimeStep 64
+}
+Viewpoint {
+  orientation -0.22268753665902893 -0.46836296758111307 0.8550125096250621 5.268179891132666
+  position -1.412433896160852 2.499683128889101 1.8410557013253097
+  follow "TurtleBot3Burger"
+  followType "Pan and Tilt Shot"
+}
+TexturedBackground {
+}
+TexturedBackgroundLight {
+}
+CircleArena {
+  radius 5
+  wallHeight 0.4
+}
+
+# Visual marker for the goal position
+Transform {
+  translation -1.4 1.5 0.05
+  children [
+    Shape {
+      appearance Appearance {
+        material Material {
+          diffuseColor 1 0 0
+          ambientIntensity 0.2
+          specularColor 0.5 0.5 0.5
+        }
+      }
+      geometry Sphere {
+        radius 0.15
+      }
+    }
+  ]
+}
+
+DEF turtlebot_single TurtleBot3Burger {
+  controller "single_controller_simple"
+  name "turtlebot_single"
+  extensionSlot [
+    Emitter {
+      name "emitter"
+      channel 100
+    }
+    Receiver {
+      name "receiver"
+      channel 101
+    }
+    Lidar {
+      name "LDS-01"
+      horizontalResolution 360
+      numberOfLayers 1
+      fieldOfView 6.28319
+      maxRange 3.5
+      minRange 0.12
+      resolution 0.01
+    }
+  ]
+}
+
+DEF turtlebot_double TurtleBot3Burger {
+  controller "single_controller_simple"
+  name "turtlebot_double"
+  translation 1 0 0.05   # shifted 1 meter on x-axis
+  extensionSlot [
+    Emitter {
+      name "emitter"
+      channel 100
+    }
+    Receiver {
+      name "receiver"
+      channel 102
+    }
+    Lidar {
+      name "LDS-01"
+      horizontalResolution 360
+      numberOfLayers 1
+      fieldOfView 6.28319
+      maxRange 3.5
+      minRange 0.12
+      resolution 0.01
+    }
+    Shape {
+    appearance PBRAppearance {
+    baseColor 1 0 0   # red
+  }
+}
+  ]
+}
+
+
+Robot {
+  controller "csv_supervisor_single_simple"
+  supervisor TRUE
+  translation 0 0 0.5
+  children [
+    Emitter {
+      name "emitter_super"
+      channel 100
+    }
+    Receiver {
+      name "receiver_super"
+      channel 100
+    }
+  ]
+}
+

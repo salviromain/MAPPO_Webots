@@ -1,0 +1,137 @@
+#VRML_SIM R2025a utf8
+
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/backgrounds/protos/TexturedBackground.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/backgrounds/protos/TexturedBackgroundLight.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/floors/protos/CircleArena.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/factory/containers/protos/WoodenBox.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/robots/robotis/turtlebot/protos/TurtleBot3Burger.proto"
+
+WorldInfo {
+  basicTimeStep 64
+}
+Viewpoint {
+  orientation -0.22268753665902893 -0.46836296758111307 0.8550125096250621 5.268179891132666
+  position -1.412433896160852 2.499683128889101 1.8410557013253097
+  follow "TurtleBot3Burger"
+  followType "Pan and Tilt Shot"
+}
+TexturedBackground {
+}
+TexturedBackgroundLight {
+}
+CircleArena {
+  radius 2.6
+  wallHeight 0.4
+}
+WoodenBox {
+  translation 0.467367 -0.545426 0.15
+  size 0.3 0.3 0.3
+}
+WoodenBox {
+  translation 1.26618 1.07342 0.15
+  name "wooden box(1)"
+  size 0.3 0.3 0.3
+}
+WoodenBox {
+  translation -0.15697 0.782967 0.15
+  name "wooden box(2)"
+  size 0.3 0.3 0.3
+}
+WoodenBox {
+  translation -1.62271 1.08968 0.15
+  name "wooden box(3)"
+  size 0.3 0.3 0.3
+}
+WoodenBox {
+  translation -1.09887 -0.301011 0.15
+  name "wooden box(4)"
+  size 0.3 0.3 0.3
+}
+WoodenBox {
+  translation -2.71307 -0.22263 0.15
+  name "wooden box(7)"
+  size 0.3 0.3 0.3
+}
+WoodenBox {
+  translation -0.744103 2.69736 0.15
+  name "wooden box(8)"
+  size 0.3 0.3 0.3
+}
+WoodenBox {
+  translation 2.30103 0.203241 0.15
+  name "wooden box(9)"
+  size 0.3 0.3 0.3
+}
+WoodenBox {
+  translation 0.005323 -1.57959 0.15
+  name "wooden box(5)"
+  size 0.3 0.3 0.3
+}
+WoodenBox {
+  translation -1.0974 -1.8598 0.15
+  name "wooden box(6)"
+  size 0.3 0.3 0.3
+}
+
+# Visual marker for the goal position
+Transform {
+  translation 1 -1 0.05
+  children [
+    Shape {
+      appearance Appearance {
+        material Material {
+          diffuseColor 1 0 0
+          ambientIntensity 0.2
+          specularColor 0.5 0.5 0.5
+        }
+      }
+      geometry Sphere {
+        radius 0.15
+      }
+    }
+  ]
+}
+
+DEF turtlebot_single TurtleBot3Burger {
+  controller "single_controller"
+  name "turtlebot_single"
+  extensionSlot [
+    Emitter {
+      name "emitter"
+      channel 0
+    }
+    Receiver {
+      name "receiver"
+      channel 101
+    }
+    Lidar {
+      name "LDS-01"
+      horizontalResolution 360
+      numberOfLayers 1
+      fieldOfView 6.28319
+      maxRange 3.5
+      minRange 0.12
+      resolution 0.01
+    }
+  ]
+}
+
+
+DEF supervisor Robot {
+  supervisor TRUE
+  controller "csv_supervisor_single"
+  children [
+    Emitter {
+      name "emitter"
+      channel 101   # sends to robot receiver
+    }
+    Receiver {
+      name "receiver"
+      channel 0     # receives from robot emitter
+    }
+  ]
+  name "supervisor"
+}
+
+
+
