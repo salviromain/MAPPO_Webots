@@ -3,6 +3,8 @@ import json
 import math
 import re
 import numpy as np
+from controller import Supervisor as RealSupervisor
+
 from deepbots.supervisor import CSVSupervisorEnv
 
 class CSVSupervisorMulti(CSVSupervisorEnv):
@@ -16,10 +18,10 @@ class CSVSupervisorMulti(CSVSupervisorEnv):
         self.robot_names = []
         self.max_steps = 10000
         self.timestep = int(self.getBasicTimeStep())
-        self.position_threshold = 0.1
-        self.goal_position = np.array([-1.4, 1.5])
+        self.position_threshold = 0.1 #how close a robot must be to the goal to end episode
+        self.goal_position = np.array([-2.4, 1.5]) #setting the position of the goal
         
-
+        #get robots
         root_children = self.getRoot().getField('children')
         count = root_children.getCount()
         for i in range(count):
@@ -38,7 +40,7 @@ class CSVSupervisorMulti(CSVSupervisorEnv):
                 self.robots.append(node)
                 self.robot_names.append(name_value)
 
-        # deterministic ordering
+        # order the robots
         if self.robots:
             self.robot_names, self.robots = zip(*sorted(zip(self.robot_names, self.robots)))
             self.robot_names = list(self.robot_names)
@@ -54,16 +56,11 @@ class CSVSupervisorMulti(CSVSupervisorEnv):
 
         self.previous_distances = [None] * self.num_robots
 
-    # helper: consistent name->index mapping used by robots as well
+    # consistent name->index mapping used by robots as well
     def name_to_idx(self, name):
         m = re.search(r'(\d+)$', name)
         if m:
             return int(m.group(1))
-        if 'single' in name.lower():
-            return 1
-        if 'double' in name.lower() or 'two' in name.lower():
-            return 2
-        return abs(hash(name)) % 10 + 1
 
     # --- receiver parsing -----------------------------------------------------
     def handle_receiver(self):
@@ -86,7 +83,7 @@ class CSVSupervisorMulti(CSVSupervisorEnv):
                 if isinstance(obj, dict) and 'name' in obj:
                     name = obj['name']
                     lidar = obj.get('lidar', [])
-                    # sanitize numeric list
+                    # check numeric list not containing inf 
                     clean = []
                     for v in lidar:
                         try:
@@ -104,29 +101,6 @@ class CSVSupervisorMulti(CSVSupervisorEnv):
                     parsed_list = (name, clean)
             except Exception:
                 parsed_list = None
-
-            # if JSON failed, try legacy "name:vals,..." format
-            if parsed_list is None:
-                if ":" in raw_str:
-                    try:
-                        name, payload = raw_str.split(":", 1)
-                        tokens = [p.strip() for p in payload.split(",") if p.strip() != ""]
-                        values = []
-                        for token in tokens:
-                            try:
-                                fv = float(token)
-                                if not math.isfinite(fv):
-                                    fv = float(max_range)
-                            except Exception:
-                                fv = float(max_range)
-                            values.append(fv)
-                        if len(values) < 8:
-                            values += [float(max_range)] * (8 - len(values))
-                        else:
-                            values = values[:8]
-                        parsed_list = (name, values)
-                    except Exception:
-                        parsed_list = None
 
             if parsed_list is None:
                 # malformed: log and skip
@@ -169,6 +143,7 @@ class CSVSupervisorMulti(CSVSupervisorEnv):
 
     # --- compute action for all robots ----------------------------------------
     def compute_action(self):
+    # not using the observations yet
         actions = []
         for idx, node in enumerate(self.robots):
             pos = np.array(node.getPosition()[:2])
@@ -181,7 +156,7 @@ class CSVSupervisorMulti(CSVSupervisorEnv):
             angle_to_goal = np.arctan2(vector_to_goal[1], vector_to_goal[0])
             rot = node.getOrientation()
 
-            # robust yaw extraction
+            # yaw extraction
             try:
                 if len(rot) == 9:
                     # rotation matrix flattened row-major: r10 = rot[3], r00 = rot[0]
@@ -204,8 +179,7 @@ class CSVSupervisorMulti(CSVSupervisorEnv):
                 yaw = 0.0
 
             angle_diff = math.atan2(math.sin(angle_to_goal - yaw), math.cos(angle_to_goal - yaw))
-
-            # gains and clipping (safer defaults)
+            #weights modifiable depending on how we want the robots to behave
             k_turn = 1.0
             k_speed = 0.6
             max_omega = 1.2   # rad/s
@@ -228,9 +202,7 @@ class CSVSupervisorMulti(CSVSupervisorEnv):
             action = self.compute_action()
             action = [float(x) for x in action]
 
-            if steps % 50 == 0:
-                print(f"Step {steps}: sending flattened action (len={len(action)}): {action}")
-
+            
             # send actions to robots by name mapping (consistent channel mapping)
             import json
 
@@ -244,12 +216,24 @@ class CSVSupervisorMulti(CSVSupervisorEnv):
                 msg = json.dumps({"name": name, "turn": turn, "speed": speed})
                 # send a single JSON object (no manual newline/framing needed)
                 self.emitter.send(msg.encode("utf-8"))
-
-                # debug print
-                print("SUPERVISOR SENDING:", msg)
+                if (steps%50 ==0):
+                    # debug print
+                    print("SUPERVISOR SENDING:", msg)
 
             # step simulation forward once (let Webots deliver messages)
             result = self.step(action)
+
+            # Real Webots step: advances the simulation clock
+            RealSupervisor.step(self, self.timestep)
+
+
+
+            # Check if all robots have reached the goal
+            if self.is_done():
+                print(f"All robots reached the goal at step {steps}! Resetting...")
+                obs = self.reset()
+                steps = 0
+                continue
 
             if isinstance(result, tuple) and len(result) >= 3:
                 obs, reward, done = result[:3]
@@ -260,7 +244,7 @@ class CSVSupervisorMulti(CSVSupervisorEnv):
 
             if steps % 50 == 0:
                 rew = result[1] if isinstance(result, tuple) and len(result) > 1 else "N/A"
-                print(f"Step {steps}: reward={rew}")
+                #print(f"Step {steps}: reward={rew}")
 
             steps += 1
 
@@ -291,11 +275,14 @@ class CSVSupervisorMulti(CSVSupervisorEnv):
         return float(total)
 
     def is_done(self):
+        """Check if ALL robots have reached the goal."""
+        if not self.robots:
+            return False
         for node in self.robots:
             pos = np.array(node.getPosition()[:2])
-            if np.linalg.norm(self.goal_position - pos) < self.position_threshold:
-                return True
-        return False
+            if np.linalg.norm(self.goal_position - pos) >= self.position_threshold:
+                return False
+        return True
 
     def get_info(self):
         return None

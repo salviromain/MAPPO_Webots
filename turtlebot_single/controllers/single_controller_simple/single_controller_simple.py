@@ -11,7 +11,6 @@ class SingleTurtleBot(CSVRobot):
         # initialize parent (sets up emitter/receiver attributes)
         super().__init__(emitter_name='emitter', receiver_name='receiver')
 
-        # ensure we have a timestep attribute
         try:
             self.timestep = int(self.getBasicTimeStep())
         except Exception:
@@ -22,8 +21,8 @@ class SingleTurtleBot(CSVRobot):
         idx = self._name_to_index(self.robot_name)
 
         # channels:
-        # - robots send to supervisor on channel 100 (emitter_channel)
-        # - robots listen for supervisor commands on channel 100 + idx (receiver_channel)
+        # send to supervisor on channel 100, which is in common for all robots
+        #  listen for supervisor commands on channel 100 + idx (receiver_channel)
         self.emitter_channel = 100
         self.receiver_channel = 100 + idx
         try:
@@ -31,11 +30,10 @@ class SingleTurtleBot(CSVRobot):
             self.emitter.setChannel(self.emitter_channel)
             # each robot's receiver listens to its dedicated channel
             self.receiver.setChannel(self.receiver_channel)
-            print(f"{self.robot_name}: emitter→{self.emitter_channel}, receiver→{self.receiver_channel}", file=sys.stderr)
+            print(f"{self.robot_name}: emitter→{self.emitter_channel}, receiver→{self.receiver_channel}")
         except Exception as e:
-            print(f"{self.robot_name} channel setup failed: {e}", file=sys.stderr)
+            print(f"{self.robot_name} channel setup failed: {e}")
 
-        # motors
         self.left_motor = self.getDevice('left wheel motor')
         self.right_motor = self.getDevice('right wheel motor')
         self.left_motor.setPosition(float('inf'))
@@ -43,7 +41,7 @@ class SingleTurtleBot(CSVRobot):
         self.left_motor.setVelocity(0.0)
         self.right_motor.setVelocity(0.0)
 
-        # lidar (optional) - store max_range for sanitizing
+        # lidar
         try:
             self.lidar = self.getDevice('LDS-01')
             self.lidar.enable(self.timestep)
@@ -57,13 +55,11 @@ class SingleTurtleBot(CSVRobot):
                 self.lidar_max_range = float(self.lidar.getMaxRange())
             except Exception:
                 self.lidar_max_range = 3.5
-            print(f"LIDAR initialized for {self.robot_name} (max_range={self.lidar_max_range})", file=sys.stderr)
+            print(f"LIDAR initialized for {self.robot_name} (max_range={self.lidar_max_range})")
         except Exception as e:
             self.lidar = None
             self.lidar_max_range = 3.5
-            print(f"No LiDAR found for {self.robot_name}: {e}", file=sys.stderr)
-
-        # initialize command storage
+            print(f"No LiDAR found for {self.robot_name}: {e}")        # initialize command storage
         self.command_turn = 0.0
         self.command_speed = 0.0
 
@@ -71,11 +67,6 @@ class SingleTurtleBot(CSVRobot):
         m = re.search(r'(\d+)$', name)
         if m:
             return int(m.group(1))
-        if 'single' in name.lower():
-            return 1
-        if 'double' in name.lower() or 'two' in name.lower() or 'second' in name.lower():
-            return 2
-        return abs(hash(name)) % 10 + 1
 
     def create_message(self):
         """Send a JSON message with sanitized lidar distances."""
@@ -106,67 +97,66 @@ class SingleTurtleBot(CSVRobot):
         if self.emitter:
             try:
                 message = json.dumps(payload)
-                # send single JSON object (no newline). Supervisor reads whole packet.
+                # send JSON. Supervisor reads whole packet.
                 self.emitter.send(message.encode("utf-8"))
-                # debug to stderr only
-                print(f"{self.robot_name} -> sent JSON payload (lidar sample): {clean}", file=sys.stderr)
+                if self.timestep%50 == 0:  # reduce print frequency
+                    print(f"{self.robot_name} -> sent JSON payload (lidar sample): {clean}")
             except Exception as e:
                 print(f"{self.robot_name} failed to send message: {e}", file=sys.stderr)
 
-        # return the list form for compatibility with parent class expectations (if used)
         return clean
 
     def use_message_data(self, message):
         """
-        Called by CSVRobot base when a packet arrives (message likely bytes).
+        Called by CSVRobot base when a packet arrives.
         Decode one packet, parse JSON, and if it's intended for this robot, apply it.
         """
         if not message:
             return
 
-        # 1. Decode bytes → str
+        # decode
         if isinstance(message, (bytes, bytearray)):
             try:
                 message = message.decode("utf-8").strip()
             except Exception:
-                print(f"{self.robot_name} could not decode message", file=sys.stderr)
+                print(f"{self.robot_name} could not decode message")
                 return
 
-        # 2. Parse JSON (expecting a single JSON object per packet)
+        # parse the json 
         try:
             data = json.loads(message)
         except Exception:
-            print(f"{self.robot_name} bad JSON from supervisor: {message}", file=sys.stderr)
+            #print(f"{self.robot_name} bad JSON from supervisor: {message}")
             return
 
-        # 3. Ignore messages intended for other robots
+        # only use msgs intended for him (safety check)
         if data.get("name") != self.robot_name:
             return
 
-        # 4. Extract turn + speed safely
         try:
             omega_bz = float(data["turn"])
             v_bx = float(data["speed"])
         except Exception:
-            print(f"{self.robot_name} missing turn/speed fields: {data}", file=sys.stderr)
+            print(f"{self.robot_name} missing turn/speed fields: {data}")
             return
 
-        # 5. Success → store them (used each step)
+        #store them 
         self.command_turn = omega_bz
         self.command_speed = v_bx
 
-        # Immediately apply motors (or will be applied at next step() call)
+        # apply motors 
         self._apply_wheel_speeds(self.command_turn, self.command_speed)
 
     def _apply_wheel_speeds(self, omega_bz, v_bx):
-        # === 1. Clamp body velocities to physical limits ===
+        #clamp velocities to physical limits ===
         MAX_V = 0.22       # m/s (TurtleBot3 Burger real max)
         MAX_OMEGA = 2.75   # rad/s
+        ##these were gotten from the PROTO
 
         v_bx = np.clip(v_bx, -MAX_V, MAX_V)
         omega_bz = np.clip(omega_bz, -MAX_OMEGA, MAX_OMEGA)
 
-        # === 2. Differential-drive kinematics ===
+        # Differential-drive kinematics ===
         wheel_radius = 0.033    # m
         wheel_base = 0.160      # m
         max_wheel_rad_s = 6.67  # rad/s
@@ -179,15 +169,15 @@ class SingleTurtleBot(CSVRobot):
         left_speed = left_lin / wheel_radius
         right_speed = right_lin / wheel_radius
 
-        # === 3. Clamp wheel speeds ===
+        #clamp wheel speeds ===
         left_speed = float(np.clip(left_speed, -max_wheel_rad_s, max_wheel_rad_s))
         right_speed = float(np.clip(right_speed, -max_wheel_rad_s, max_wheel_rad_s))
 
-        # === 4. Apply ===
         self.left_motor.setPosition(float('inf'))
         self.right_motor.setPosition(float('inf'))
         self.left_motor.setVelocity(left_speed)
         self.right_motor.setVelocity(right_speed)
+
     def run(self):
         """
         Main loop overriding CSVRobot.run to ensure we send lidar and poll for packets each timestep.
@@ -197,19 +187,18 @@ class SingleTurtleBot(CSVRobot):
          - step the simulation
         """
         # If CSVRobot already provides run() with expected behaviour, this will replace it.
-        # Use caution if the deepbots API expects a different contract, but this pattern is common.
-        while self.step() != -1:
-            # send lidar (non-blocking)
+        while super(CSVRobot, self).step(self.timestep) != -1:
+
+            # send lidar 
             self.create_message()
 
-            # process all incoming packets
+            # process incoming packets
             while self.receiver.getQueueLength() > 0:
                 try:
                     raw = self.receiver.getString()
-                    # pass raw to use_message_data which handles decoding & JSON parse
                     self.use_message_data(raw)
                 except Exception as e:
-                    print(f"{self.robot_name} error reading packet: {e}", file=sys.stderr)
+                    print(f"{self.robot_name} error reading packet: {e}")
                 finally:
                     # inform Webots we consumed the packet
                     try:

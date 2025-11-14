@@ -20,13 +20,13 @@ TexturedBackground {
 TexturedBackgroundLight {
 }
 CircleArena {
-  radius 5
+  radius 4
   wallHeight 0.4
 }
 
 # Visual marker for the goal position
 Transform {
-  translation -1.4 1.5 0.05
+  translation -2.4 1.5 0.05
   children [
     Shape {
       appearance Appearance {
@@ -43,9 +43,9 @@ Transform {
   ]
 }
 
-DEF turtlebot_single TurtleBot3Burger {
+DEF turtlebot_1 TurtleBot3Burger {
   controller "single_controller_simple"
-  name "turtlebot_single"
+  name "turtlebot_1"
   extensionSlot [
     Emitter {
       name "emitter"
@@ -67,9 +67,9 @@ DEF turtlebot_single TurtleBot3Burger {
   ]
 }
 
-DEF turtlebot_double TurtleBot3Burger {
+DEF turtlebot_2 TurtleBot3Burger {
   controller "single_controller_simple"
-  name "turtlebot_double"
+  name "turtlebot_2"
   translation 1 0 0.05   # shifted 1 meter on x-axis
   extensionSlot [
     Emitter {
